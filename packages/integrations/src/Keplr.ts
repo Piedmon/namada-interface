@@ -15,6 +15,7 @@ import {
 } from "@keplr-wallet/types";
 // import Long from "long";
 import BigNumber from "bignumber.js";
+import Long from "long";
 
 import {
   Account,
@@ -169,6 +170,7 @@ class Keplr implements Integration<Account, OfflineSigner, CosmosTokenType> {
         amount,
         portId = "transfer",
         channelId,
+        memo
       } = props.ibcProps;
       const { feeAmount } = props.txProps;
 
@@ -184,21 +186,40 @@ class Keplr implements Integration<Account, OfflineSigner, CosmosTokenType> {
         amount: coins(feeAmount.toString(), minDenom),
         gas: "222000",
       };
+      const timeoutTimestamp = Math.floor(Date.now() / 1000) + 60;
+      const timeoutTimestampNanoseconds =
+        timeoutTimestamp ?
+          Long.fromNumber(timeoutTimestamp).multiply(1_000_000_000)
+        : undefined;
+
+      const messages = [
+        {
+          typeUrl: "/ibc.applications.transfer.v1.MsgTransfer",
+          value: {
+            memo: memo,
+            receiver,
+            sender: source,
+            sourceChannel: channelId,
+            sourcePort: portId,
+            // timeoutHeight: {
+            //   revisionHeight: "0",
+            //   revisionNumber: "20723197",
+            // },
+            timeoutTimestamp: timeoutTimestampNanoseconds, //timeout timestamp
+            token: {
+              amount: amount.toString(),
+              denom: "uatom",
+              // denom: minDenom,
+              // denom: "ibc/E6B985F8CF0F8BB3EB5B80D9EC46531A1E5132B7183C0248858C0F26242F4336"
+            },
+          },
+        },
+      ];
 
       const response = await client
-        .sendIbcTokens(
+        .signAndBroadcast(
           source,
-          receiver,
-          coin(amount.toString(), minDenom),
-          portId,
-          channelId,
-          // TODO: Should we enable timeout height versus timestamp?
-          // {
-          //   revisionHeight: Long.fromNumber(0),
-          //   revisionNumber: Long.fromNumber(0),
-          // },
-          undefined, // timeout height
-          Math.floor(Date.now() / 1000) + 60, // timeout timestamp
+          messages,
           fee,
           `${this.chain.alias} (${this.chain.chainId})->Namada`
         )
